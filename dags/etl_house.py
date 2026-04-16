@@ -14,21 +14,14 @@ PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# =========================
-# IMPORT CÁC MODULE ĐÃ VIẾT LẠI
-# =========================
-from extract_data.extract_house import extract_house
-from transform_data.transform_house_pyspark import clean_house
-from load_data.copy_into_postgres3 import load_to_supabase # Hàm nạp kèm Vector
-from load_data.upload_to_supabase_storage3 import upload_to_storage
-from analyze.house_analysis import analyze_house
-
 # =========================================
 # WRAPPER FUNCTIONS (Hàm bọc cho Airflow)
 # =========================================
 
 def _extract_task(ti, **kwargs):
     """Bước 1: Crawl dữ liệu và trả về path CSV thô."""
+    from extract_data.extract_house import extract_house
+
     raw_path = extract_house(limit_rows=kwargs.get('limit', 100))
     if not raw_path:
         raise ValueError("Extract failed: No CSV path returned")
@@ -36,11 +29,15 @@ def _extract_task(ti, **kwargs):
 
 def _upload_raw_task(ti):
     """Bước 2: Upload file thô lên Supabase Storage (Datalake)."""
+    from load_data.upload_to_supabase_storage3 import upload_to_storage
+
     raw_path = ti.xcom_pull(task_ids="extract_house_task")
     return upload_to_storage(raw_path, bucket="datalake-house", dest_folder="raw")
 
 def _transform_task(ti):
     """Bước 3: Làm sạch dữ liệu và tạo cột ai_summary cho RAG."""
+    from transform_data.transform_house_pyspark import clean_house
+
     raw_path = ti.xcom_pull(task_ids="extract_house_task")
     clean_path = clean_house(raw_path)
     # Đẩy path đã clean vào XCom để task load và analyze lấy dùng
@@ -49,6 +46,8 @@ def _transform_task(ti):
 
 def _load_vector_task(ti):
     """Bước 4: Tạo Vector Embedding và đẩy lên Supabase Vector DB."""
+    from load_data.copy_into_postgres3 import load_to_supabase # Hàm nạp kèm Vector
+
     clean_path = ti.xcom_pull(task_ids="transform_house_task", key="cleaned_csv_path")
     if not clean_path:
         raise ValueError("Load failed: No cleaned CSV path found in XCom")
@@ -56,6 +55,8 @@ def _load_vector_task(ti):
 
 def _analyze_task(ti):
     """Bước 5: Tạo biểu đồ phân tích cho Admin CMS."""
+    from analyze.house_analysis import analyze_house
+
     clean_path = ti.xcom_pull(task_ids="transform_house_task", key="cleaned_csv_path")
     return analyze_house(clean_path)
 
@@ -83,7 +84,7 @@ with DAG(
     t1 = PythonOperator(
         task_id="extract_house_task",
         python_callable=_extract_task,
-        op_kwargs={"limit": 300}
+        op_kwargs={"limit": 100}
     )
 
     # 2. Lưu trữ file thô (Chạy song song với Transform để backup)
