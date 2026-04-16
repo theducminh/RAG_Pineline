@@ -9,8 +9,8 @@ from airflow.operators.python import PythonOperator
 # =========================
 # THIẾT LẬP ĐƯỜNG DẪN PROJECT
 # =========================
-# Sử dụng os.path để linh hoạt hơn khi chạy trên WSL2
-PROJECT_ROOT = "/mnt/d/Do an tot nghiep 2026/RAG Pineline"
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 

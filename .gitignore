@@ -1,7 +1,8 @@
 # Python environment
 .venv/
 airflow_env/
-__pycache__/
+.airflow_env/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -25,7 +26,7 @@ output_data/
 *.tar.gz
 
 # Bảo mật (Cực kỳ quan trọng)
-.env
+**/.env
 .flaskenv
 
 # OS rác
