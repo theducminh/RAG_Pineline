@@ -2,8 +2,8 @@
 import os
 import shutil
 import glob
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, concat_ws, lit, substring, coalesce
+from pyspark.sql import SparkSession, Window
+from pyspark.sql.functions import col, concat_ws, lit, max_by, row_number, struct, substring, coalesce
 from pyspark.sql.types import StructType, StructField, LongType, StringType, DoubleType, IntegerType, TimestampType
 
 def clean_house(raw_path):
@@ -55,6 +55,10 @@ def clean_house(raw_path):
             .option("escape", '"') \
             .csv(raw_path, inferSchema=True)
         
+        # Loại bỏ các dòng không có ID hợp lệ, trùng
+        df = df.filter(col("id").isNotNull())
+        df = df.dropDuplicates(["id"]).orderBy(col("published_at").desc())
+
         # 3. Transform số liệu
         df = df.withColumn("price_million", col("price") / 1000000) \
                .withColumn("price_per_m2", col("price") / col("area"))

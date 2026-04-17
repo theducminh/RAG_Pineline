@@ -18,7 +18,7 @@ def get_embeddings_batch(texts):
     if not texts:
         return []
 
-    API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
+    API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
     token = os.getenv("HUGGINGFACE_API_KEY")
     headers = {
         "Authorization": f"Bearer {token}",
