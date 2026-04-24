@@ -11,36 +11,34 @@ from dotenv import load_dotenv
 # Đọc cấu hình từ .env
 load_dotenv()
 
+from huggingface_hub import InferenceClient
+
 def get_embeddings_batch(texts):
     """
-    [FIXED] Gọi API 1 LẦN cho toàn bộ danh sách texts. Tốc độ tăng N lần.
+    Sử dụng InferenceClient chuẩn của Hugging Face. 
+    Chống chết yểu khi API endpoint thay đổi và xịn hơn trong việc quản lý connection.
     """
     if not texts:
         return []
 
-    API_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction"
     token = os.getenv("HUGGINGFACE_API_KEY")
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "X-Wait-For-Model": "true"
-    }
     
-    # API nhận list đầu vào
-    payload = {
-        "inputs": texts,
-        "parameters": {} 
-    }
+    # Khởi tạo Client bám thẳng vào Model, kệ xác router bên dưới nó trỏ đi đâu
+    client = InferenceClient(model="sentence-transformers/all-MiniLM-L6-v2", token=token)
     
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"❌ HF API Error {response.status_code}: {response.text}")
-            return [None] * len(texts)
+        # Gọi thẳng feature_extraction, client tự động parse payload
+        embeddings = client.feature_extraction(texts)
+        
+        # Parse về chuẩn list of floats để đẩy xuống db psycopg2
+        if hasattr(embeddings, "tolist"):
+            return embeddings.tolist()
+        return embeddings
+        
     except Exception as e:
-        print(f"❌ Lỗi kết nối HF: {e}")
+        print(f"❌ Lỗi kết nối HF Hub: {e}")
         return [None] * len(texts)
+
 
 def load_to_supabase(csv_path, table="fact_house_listings"):
     """
@@ -139,6 +137,8 @@ def load_to_supabase(csv_path, table="fact_house_listings"):
 
     cursor.close()
     conn.close()
+    if success_count == 0:
+        raise RuntimeError(f"❌ CRITICAL: Nạp DB thất bại toàn tập. Không có bản ghi nào vào Supabase từ file {csv_path}")
     print(f"🎯 Hoàn tất! Đã nạp thành công {success_count} bản ghi bằng Bulk Insert.")
     return True
 
