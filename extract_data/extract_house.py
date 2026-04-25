@@ -1,5 +1,5 @@
 # extract_data/extract_house.py
-import os, json, datetime, requests, csv, time, hashlib
+import os, datetime, requests, csv, time, hashlib, random
 
 def extract_chotot(limit_rows):
     """Cào dữ liệu từ Gateway API của Chợ Tốt"""
@@ -77,8 +77,11 @@ def extract_huggingface(limit_rows):
     # Bắt buộc dùng streaming=True để không load file Parquet khổng lồ vào RAM
     ds = load_dataset("tinixai/vietnam-real-estates", split="train", streaming=True, token=os.getenv('HUGGINGFACE_API_KEY'))
     
+    # Dataset này có hơn 50k dòng, nhảy random một khoảng để lấy data khác nhau
+    random_start = random.randint(0, 40000)
+
     rows = []
-    for item in ds.take(limit_rows):
+    for item in ds.skip(random_start).take(limit_rows):
         # Tạo chuỗi nhận diện duy nhất
         core_string = f"{item.get('name')}_{item.get('price')}_{item.get('area')}_{item.get('district_name')}"
         # Băm thành ID cố định
