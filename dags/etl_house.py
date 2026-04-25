@@ -1,19 +1,11 @@
 
 #dags/etl_house.py
-import sys
 import os
 import shutil
 from datetime import datetime, timedelta
+from pathlib import Path
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-
-# =========================
-# THIẾT LẬP ĐƯỜNG DẪN PROJECT
-# =========================
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 # =========================================
 # WRAPPER FUNCTIONS (Hàm bọc cho Airflow)
@@ -64,10 +56,14 @@ def _analyze_task(ti):
 def _cleanup_task(ti):
     """Bước Cuối: Xóa file CSV local sau khi đẩy hết lên Remote an toàn."""
     """Chỉ xóa folder cũ hơn 3 ngày để tránh Race Condition"""
-    base_dir = os.path.join(PROJECT_ROOT, "data_input/house")
-    cutoff = datetime.now() - timedelta(days=3)
+    airflow_home = Path(os.getenv("AIRFLOW_HOME", "/opt/airflow"))
+    base_dir = airflow_home / "data_input" / "house"
     
-    if not os.path.exists(base_dir): return
+    if not base_dir.exists():
+        print(f"⚠️ Thư mục không tồn tại: {base_dir}")
+        return
+    
+    cutoff = datetime.now() - timedelta(days=3)
     
     for folder in os.listdir(base_dir):
         path = os.path.join(base_dir, folder)

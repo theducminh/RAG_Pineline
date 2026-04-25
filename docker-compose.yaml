@@ -1,0 +1,71 @@
+x-airflow-common:
+  &airflow-common
+  build: .
+  user: "${AIRFLOW_UID:-50000}:0"
+  env_file:
+    - .env
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    PYTHONPATH: /opt/airflow
+  volumes:
+    - airflow_logs:/opt/airflow/logs
+    - ./dags:/opt/airflow/dags
+    - ./extract_data:/opt/airflow/extract_data
+    - ./transform_data:/opt/airflow/transform_data
+    - ./load_data:/opt/airflow/load_data
+    - ./analyze:/opt/airflow/analyze
+    - ./utils:/opt/airflow/utils
+    - ./data_input:/opt/airflow/data_input
+    - ./output_data:/opt/airflow/output_data
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  # Chạy một cái Postgres riêng rẻ
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    # Lưu DB vào ổ cứng thật
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    profiles: ["init"]
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - 8081:8080
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+
+# Khai báo volume vật lý
+volumes:
+  postgres_data:
+  airflow_logs:

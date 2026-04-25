@@ -6,10 +6,6 @@ import time
 import psycopg2
 from psycopg2.extras import execute_values
 import json
-from dotenv import load_dotenv
-
-# Đọc cấu hình từ .env
-load_dotenv()
 
 from huggingface_hub import InferenceClient
 

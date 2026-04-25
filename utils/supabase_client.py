@@ -1,9 +1,7 @@
 # utils/supabase_client.py
 import os
 from supabase import create_client
-import dotenv
 
-dotenv.load_dotenv()
 def get_supabase_client():
     """
     Initialize and return a Supabase client using environment variables.

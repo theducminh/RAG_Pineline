@@ -17,64 +17,58 @@ Dự án này được cấu hình tốt nhất để chạy trên môi trườn
 
 ### Bước 1: Tải code về máy
 Mở Terminal (Ubuntu/WSL2) và chạy lệnh sau:
-```
+```Bash
 git clone https://github.com/theducminh/RAG_Pineline.git
 cd RAG_Pineline
 ```
 
-### Bước 2: Khởi tạo môi trường ảo Python
-Để không làm rác máy, bạn cần tạo một môi trường Python riêng cho dự án này:
+### Bước 2: Cấu hình Khóa bảo mật (API Keys)
+Tạo một file mới tên là `.env` nằm ngay trong thư mục gốc của dự án. Copy và điền các thông số sau vào file:
 
-```
-# Cài đặt venv (nếu máy chưa có)
-sudo apt install python3.10-venv -y
-
-# Tạo môi trường ảo có tên là .airflow_env
-python3 -m venv .airflow_env
-
-# Kích hoạt môi trường (LƯU Ý: Phải chạy lệnh này mỗi khi mở terminal mới)
-source .airflow_env/bin/activate
-```
-
-### Bước 3: Cài đặt thư viện
-Khi đã thấy chữ (.airflow_env) ở đầu dòng lệnh terminal, tiến hành cài đặt:
-
-```
-pip install -r requirements.txt
-pip install "apache-airflow==2.9.1" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.1/constraints-3.10.txt"
-```
-
-### Bước 4: Cấu hình Khóa bảo mật (API Keys)
-Tạo một file mới tên là .env nằm ngay trong thư mục gốc của dự án (ngang hàng với thư mục dags/). Mở file đó lên và điền các thông tin sau:
-
-```
+```Bash
 HUGGINGFACE_API_KEY=hf_xxxx...
-SUPABASE_URL=[https://xxxx.supabase.co](https://xxxx.supabase.co)
+SUPABASE_URL=https://xxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhxxxx...
-SUPABASE_DB_URL=postgresql://postgres.xxxx:[PASSWORD]@[aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres]
+SUPABASE_DB_URL=postgresql://postgres.xxxx:[PASSWORD]@[aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres]
+
+AIRFLOW__WEBSERVER__SECRET_KEY=Diền-bừa-vào-đây
+AIRFLOW_UID=1000
+```
+(Hỏi người quản lý dự án để lấy các đoạn mã xxxx thực tế. Tham số AIRFLOW_UID=1000 bắt buộc phải có để map quyền tạo/sửa file đúng với user của máy host).
+
+### Bước 3: Build Image và Khởi tạo Database Airflow
+Do pipeline có sử dụng thêm các thư viện xử lý data và AI bên ngoài (như pandas, huggingface_hub, supabase), ta cần build custom image dựa trên image gốc của Airflow:
+
+```Bash
+# Build custom image theo requirements.txt
+docker compose build
+
+# Khởi tạo các bảng dữ liệu metadata cho DB của Airflow
+docker compose --profile init up airflow-init
+```
+(Đợi lệnh init chạy xong và báo exited with code 0 trước khi qua bước 4).
+
+### Bước 4: Khởi động Hệ thống
+Tiến hành chạy toàn bộ cụm container (Postgres DB, Webserver, Scheduler) dưới nền (background):
+
+```Bash
+docker compose up -d
 ```
 
-(Hỏi người quản lý dự án để lấy các đoạn mã xxxx thực tế).
-
-### Bước 5: Khởi động Hệ thống
-Tiến hành chạy Airflow:
-
-```
-./start_airflow.sh
-```
-
-(Nếu hệ thống hỏi mật khẩu máy tính để bật PostgreSQL, hãy nhập vào).
-
-### Bước 6: Truy cập giao diện quản lý
+### Bước 5: Truy cập giao diện quản lý
 Mở trình duyệt web và vào địa chỉ: http://localhost:8081
+(Lưu ý: Port đã được map ra ngoài là `8081` để tránh xung đột với các dịch vụ dùng port `8080` khác trên OS của bạn).
 
-Tài khoản đăng nhập mặc định: admin / Mật khẩu: admin
+- Tài khoản đăng nhập: `admin`
 
-Tại đây, bạn có thể bật (unpause) DAG có tên etl_house để hệ thống bắt đầu tự động chạy.
+- Mật khẩu: `admin`
+
+Tại giao diện, bạn có thể bật (unpause) DAG có tên real_estate_rag_pipeline_v2 để hệ thống tự động chạy luồng ETL hàng ngày.
 
 🛑 Cách tắt Hệ thống an toàn
-Airflow chạy ngầm rất nhiều tiến trình. Tuyệt đối không tắt ngang Terminal (hoặc bấm Ctrl+C). Để tắt dọn dẹp sạch sẽ và giải phóng RAM, hãy mở một terminal mới (vào lại thư mục dự án) và chạy:
+Tuyệt đối không dùng Ctrl+C tắt ngang terminal. Để tắt, dọn dẹp sạch sẽ network của container và giải phóng RAM, hãy chạy:
 
+```Bash
+docker compose down
 ```
-./stop_airflow.sh
-```
+(Trong trường hợp bị lỗi hoặc muốn xóa sạch toàn bộ lịch sử chạy của Airflow để bắt đầu lại, hãy thêm cờ `-v` (`docker compose down -v`) để dọn luôn cả dữ liệu Volume).

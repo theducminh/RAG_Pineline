@@ -1,0 +1,11 @@
+{
+    "name": "Airflow RAG Development",
+    "dockerComposeFile": ["../docker-compose.yaml"],
+    "service": "airflow-webserver",
+    "workspaceFolder": "/opt/airflow",
+    "customizations": {
+        "vscode": {
+            "extensions": ["ms-python.python"]
+        }
+    }
+}
