@@ -56,7 +56,7 @@ docker compose up -d
 ```
 
 ### Bước 5: Truy cập giao diện quản lý
-Mở trình duyệt web và vào địa chỉ: http://localhost:8081
+Mở trình duyệt web và vào địa chỉ: http://127.0.0.1:8081
 (Lưu ý: Port đã được map ra ngoài là `8081` để tránh xung đột với các dịch vụ dùng port `8080` khác trên OS của bạn).
 
 - Tài khoản đăng nhập: `admin`
