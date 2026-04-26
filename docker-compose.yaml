@@ -57,7 +57,7 @@ services:
     <<: *airflow-common
     command: webserver
     ports:
-      - 8081:8080
+      - "127.0.0.1:8081:8080" # <-- Chặn truy cập từ ngoài vào.
     restart: always
 
   airflow-scheduler:
