@@ -1,5 +1,5 @@
 # extract_data/extract_house.py
-import os, json, datetime, requests, csv, time, uuid
+import os, json, datetime, requests, csv, time, hashlib
 
 def extract_chotot(limit_rows):
     """Cào dữ liệu từ Gateway API của Chợ Tốt"""
@@ -79,8 +79,12 @@ def extract_huggingface(limit_rows):
     
     rows = []
     for item in ds.take(limit_rows):
+        # Tạo chuỗi nhận diện duy nhất
+        core_string = f"{item.get('name')}_{item.get('price')}_{item.get('area')}_{item.get('district_name')}"
+        # Băm thành ID cố định
+        stable_id = f"hf_{hashlib.md5(core_string.encode('utf-8')).hexdigest()[:15]}"
         rows.append({
-            "id": f"hf_{uuid.uuid4().hex[:10]}",  # Tự sinh ID ảo
+            "id": stable_id,
             "title": item.get("name"),
             "description": item.get("description"),
             "property_type_name": item.get("property_type_name"),
@@ -119,8 +123,7 @@ def extract_house(limit_rows=100):
     rows.extend(extract_huggingface(limit_per_source))
 
     if not rows:
-        print("❌ Không lấy được dữ liệu từ nguồn nào.")
-        return None
+        raise RuntimeError("❌ CRITICAL: Không cào được bất kỳ dữ liệu nào từ Chợ Tốt và Hugging Face!")
 
     out_csv = os.path.join(download_dir, f"raw_{int(time.time())}.csv")
     with open(out_csv, "w", encoding="utf-8", newline="") as f:

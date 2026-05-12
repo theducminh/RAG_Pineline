@@ -11,4 +11,5 @@ seaborn
 matplotlib
 plotly
 datasets
+huggingface_hub
 seaborn

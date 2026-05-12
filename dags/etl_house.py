@@ -2,6 +2,7 @@
 #dags/etl_house.py
 import sys
 import os
+import shutil
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -36,7 +37,7 @@ def _upload_raw_task(ti):
 
 def _transform_task(ti):
     """Bước 3: Làm sạch dữ liệu và tạo cột ai_summary cho RAG."""
-    from transform_data.transform_house_pyspark import clean_house
+    from transform_data.transform_house_pandas import clean_house
 
     raw_path = ti.xcom_pull(task_ids="extract_house_task")
     clean_path = clean_house(raw_path)
@@ -59,6 +60,23 @@ def _analyze_task(ti):
 
     clean_path = ti.xcom_pull(task_ids="transform_house_task", key="cleaned_csv_path")
     return analyze_house(clean_path)
+
+def _cleanup_task(ti):
+    """Bước Cuối: Xóa file CSV local sau khi đẩy hết lên Remote an toàn."""
+    """Chỉ xóa folder cũ hơn 3 ngày để tránh Race Condition"""
+    base_dir = os.path.join(PROJECT_ROOT, "data_input/house")
+    cutoff = datetime.now() - timedelta(days=3)
+    
+    if not os.path.exists(base_dir): return
+    
+    for folder in os.listdir(base_dir):
+        path = os.path.join(base_dir, folder)
+        try:
+            f_date = datetime.strptime(folder, "%Y-%m-%d")
+            if f_date < cutoff:
+                shutil.rmtree(path)
+                print(f"🧹 Xóa folder cũ: {folder}")
+        except: continue
 
 # =========================
 # CẤU HÌNH DAG
@@ -112,7 +130,15 @@ with DAG(
         python_callable=_analyze_task
     )
 
+    # 6. Task Dọn dẹp
+    t6 = PythonOperator(
+        task_id="cleanup_local_files",
+        python_callable=_cleanup_task,
+        trigger_rule="all_done" # Chạy kể cả khi t4, t5 lỗi để dọn dẹp
+    )
+
     # THIẾT LẬP LUỒNG CHẠY
     # t1 xong thì t2 và t3 chạy song song. t3 xong thì t4 và t5 chạy.
     t1 >> [t2, t3]
     t3 >> [t4, t5]
+    [t2, t4, t5] >> t6
