@@ -23,7 +23,7 @@ def _extract_task(ti, **kwargs):
     """Bước 1: Crawl dữ liệu và trả về path CSV thô."""
     from extract_data.extract_house import extract_house
 
-    raw_path = extract_house(limit_rows=kwargs.get('limit', 100))
+    raw_path = extract_house(limit_rows=kwargs.get('limit', 200))
     if not raw_path:
         raise ValueError("Extract failed: No CSV path returned")
     return raw_path
@@ -52,7 +52,7 @@ def _load_vector_task(ti):
     clean_path = ti.xcom_pull(task_ids="transform_house_task", key="cleaned_csv_path")
     if not clean_path:
         raise ValueError("Load failed: No cleaned CSV path found in XCom")
-    return load_to_supabase(clean_path, table="fact_house_listings")
+    return load_to_supabase(clean_path, table="ai_extraction_logs")
 
 def _analyze_task(ti):
     """Bước 5: Tạo biểu đồ phân tích cho Admin CMS."""
@@ -102,7 +102,7 @@ with DAG(
     t1 = PythonOperator(
         task_id="extract_house_task",
         python_callable=_extract_task,
-        op_kwargs={"limit": 100}
+        op_kwargs={"limit": 200}
     )
 
     # 2. Lưu trữ file thô (Chạy song song với Transform để backup)
