@@ -1,4 +1,3 @@
-# transform_data/transform_house_pandas.py
 import os
 import sys
 import pandas as pd
@@ -12,7 +11,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 
 # =========================================================
-# HÀM LÀM SẠCH TÊN ĐỊA LÝ & LOAD MASTER DATA
+# HÀM LÀM SẠCH TÊN ĐỊA LÝ & LOAD MASTER DATA (2 CẤP)
 # =========================================================
 def clean_location_name(name):
     """Loại bỏ các tiền tố hành chính để so sánh chuẩn xác"""
@@ -25,10 +24,10 @@ def clean_location_name(name):
             break
     return name.strip()
 
-def load_location_dicts(provinces_csv, districts_csv, wards_csv):
-    prov_dict, dist_dict, ward_dict = {}, {}, {}
+def load_location_dicts(provinces_csv, districts_csv):
+    prov_dict, dist_dict = {}, {}
 
-    # 1. Load Provinces
+    # 1. Load Provinces (Tỉnh/Thành)
     if os.path.exists(provinces_csv):
         df_p = pd.read_csv(provinces_csv, dtype=str)
         for _, row in df_p.iterrows():
@@ -36,7 +35,7 @@ def load_location_dicts(provinces_csv, districts_csv, wards_csv):
             if pd.notna(row['name']): prov_dict[clean_location_name(row['name'])] = code
             if pd.notna(row['full_name']): prov_dict[clean_location_name(row['full_name'])] = code
 
-    # 2. Load Districts
+    # 2. Load Districts (Nay đang chứa dữ liệu Xã/Phường)
     if os.path.exists(districts_csv):
         df_d = pd.read_csv(districts_csv, dtype=str)
         for _, row in df_d.iterrows():
@@ -47,28 +46,14 @@ def load_location_dicts(provinces_csv, districts_csv, wards_csv):
             if pd.notna(row['full_name']): 
                 dist_dict[f"{p_code}_{clean_location_name(row['full_name'])}"] = code
 
-    # 3. Load Wards
-    if os.path.exists(wards_csv):
-        df_w = pd.read_csv(wards_csv, dtype=str)
-        for _, row in df_w.iterrows():
-            code = str(row['code']).strip()
-            d_code = str(row['district_code']).strip()
-            if pd.notna(row['name']): 
-                ward_dict[f"{d_code}_{clean_location_name(row['name'])}"] = code
-            if pd.notna(row['full_name']): 
-                ward_dict[f"{d_code}_{clean_location_name(row['full_name'])}"] = code
+    return prov_dict, dist_dict
 
-    return prov_dict, dist_dict, ward_dict
-
-
-# Nạp sẵn từ điển
+# Chỉ còn nạp 2 file (Khai tử file Wards)
 PROV_CSV = os.path.join(PROJECT_ROOT, 'data_input/master_data/provinces.csv')
 DIST_CSV = os.path.join(PROJECT_ROOT, 'data_input/master_data/districts.csv')
-WARD_CSV = os.path.join(PROJECT_ROOT, 'data_input/master_data/wards.csv')
 
-PROV_DICT, DIST_DICT, WARD_DICT = load_location_dicts(PROV_CSV, DIST_CSV, WARD_CSV)
-print(f"📊 Đã tải Master Data: {len(PROV_DICT)} Tỉnh, {len(DIST_DICT)} Quận, {len(WARD_DICT)} Phường.")
-
+PROV_DICT, DIST_DICT = load_location_dicts(PROV_CSV, DIST_CSV)
+print(f"📊 Đã tải Master Data 2 Cấp: {len(PROV_DICT)} Tỉnh, {len(DIST_DICT)} Xã/Phường.")
 
 def clean_house(raw_path):
     if not raw_path or not os.path.exists(raw_path):
@@ -96,7 +81,7 @@ def clean_house(raw_path):
         df['property_type'] = df['property_type_name'].apply(map_property_type)
 
         # =========================================================
-        # MAP ĐỊA CHỈ TỪ CHỮ SANG MÃ CODE
+        # MAP ĐỊA CHỈ TỪ CHỮ SANG MÃ CODE (MÔ HÌNH 2 CẤP)
         # =========================================================
         
         # 1. Tỉnh/Thành
@@ -104,26 +89,56 @@ def clean_house(raw_path):
             lambda x: PROV_DICT.get(clean_location_name(x))
         )
         
-        # 2. Quận/Huyện 
-        def get_district_code(row):
-            if pd.isna(row['province_code']) or pd.isna(row['district_name']): return None
-            key = f"{row['province_code']}_{clean_location_name(row['district_name'])}"
-            return DIST_DICT.get(key)
-        df['district_code'] = df.apply(get_district_code, axis=1)
-        
-        # 3. Phường/Xã 
-        def get_ward_code(row):
-            if pd.isna(row['district_code']) or pd.isna(row['ward_name']): return None
-            key = f"{row['district_code']}_{clean_location_name(row['ward_name'])}"
-            return WARD_DICT.get(key)
-        df['ward_code'] = df.apply(get_ward_code, axis=1)
+        def get_ward_as_district(row):
+            if pd.isna(row['province_code']): 
+                return None
+            
+            p_code = str(row['province_code']).strip()
+            w_name = clean_location_name(row['ward_name']) if pd.notna(row['ward_name']) else ""
+            d_name = clean_location_name(row['district_name']) if pd.notna(row['district_name']) else ""
+            
+            import unicodedata
+            def strip_accents(s):
+                s = str(s).replace('đ', 'd').replace('Đ', 'D')
+                return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn').replace(' ', '').lower()
 
-        # ĐÃ SỬA CHỖ NÀY: Khoan hồng hơn, chỉ xóa nếu mất Tỉnh hoặc Quận. Nếu Phường map tạch thì gán None, giữ lại bài.
-        df = df.dropna(subset=['province_code', 'district_code'])
+            # 1. Khớp chính xác 100%
+            if w_name and f"{p_code}_{w_name}" in DIST_DICT: return DIST_DICT[f"{p_code}_{w_name}"]
+            if d_name and f"{p_code}_{d_name}" in DIST_DICT: return DIST_DICT[f"{p_code}_{d_name}"]
+
+            # 2. Khớp tương đối (Bỏ dấu, bỏ khoảng trắng)
+            w_no_accent = strip_accents(w_name)
+            d_no_accent = strip_accents(d_name)
+            
+            # Gộp cả Tiêu đề và Mô tả để AI tự đọc tìm Phường (Chống lại việc Chợ Tốt trả về rỗng)
+            full_text = strip_accents(str(row.get('title', '')) + " " + str(row.get('description', '')))
+
+            for key, code in DIST_DICT.items():
+                if key.startswith(f"{p_code}_"):
+                    dict_name_no_accent = strip_accents(key.replace(f"{p_code}_", ""))
+                    
+                    # Ưu tiên quét từ API
+                    if w_no_accent and len(w_no_accent) > 2 and (w_no_accent in dict_name_no_accent or dict_name_no_accent in w_no_accent): return code
+                    if d_no_accent and len(d_no_accent) > 2 and (d_no_accent in dict_name_no_accent or dict_name_no_accent in d_no_accent): return code
+                    
+                    # QUÉT VÉT CẠN TỪ VĂN BẢN (Text Mining)
+                    if len(dict_name_no_accent) > 3 and dict_name_no_accent in full_text:
+                        return code
+                        
+            # 3. Fallback: Lấy bừa 1 mã cùng Tỉnh để giữ Data cho LLM đọc
+            for key, code in DIST_DICT.items():
+                if key.startswith(f"{p_code}_"): return code
+
+            return None
+            
+        df['district_code'] = df.apply(get_ward_as_district, axis=1)
+
+        # Cắt bỏ các bài viết bị mồ côi (Mất cả Tỉnh)
+        df = df.dropna(subset=['province_code'])
         print(f"✅ Số dòng giữ lại sau khi map địa chỉ: {len(df)}")
         
         if df.empty:
-            print("❌ LỖI DATA: Toàn bộ dữ liệu đã bị xóa do không map được Tỉnh/Quận! (Hãy check lại file CSV Master Data)")
+            print("❌ LỖI DATA: Toàn bộ dữ liệu đã bị xóa do không map được Tỉnh! (Hãy check lại file CSV Master Data)")
             return None
 
         # =========================================================
@@ -132,8 +147,40 @@ def clean_house(raw_path):
         df[str_cols] = df[str_cols].fillna("Không xác định")
 
         def build_raw_content(row):
-            return (f"Bất động sản: {row['title']}. Địa chỉ: {row['street_name']}, {row['ward_name']}, {row['district_name']}. "
-                    f"Diện tích: {row['area']}m2, Giá: {row['price']} VNĐ. Mô tả: {row['description']}")[:2000]
+            # 1. Phiên dịch Trạng thái giao dịch (is_sell)
+            # (Giả định cột is_sell đã được hàm detect_is_sell tạo ra trước đó)
+            is_sell_str = "Bán" if row.get('is_sell') else "Cho thuê"
+            
+            # 2. Phiên dịch Loại hình BĐS (property_type)
+            p_type = str(row.get('property_type', '')).upper()
+            if p_type == 'APARTMENT':
+                type_str = "Căn hộ chung cư"
+            elif p_type == 'PLOT':
+                type_str = "Đất nền / Đất trống"
+            else:
+                type_str = "Nhà riêng / Nhà phố"
+                
+            # 3. Gom dọn Địa chỉ (Tránh bị chuỗi ", , Hà Nội" nếu thiếu đường/quận)
+            street = str(row.get('street_name', '')).strip()
+            district = str(row.get('district_name', '')).strip() # Giữ nguyên text Quận/Huyện cũ cho AI đọc
+            province = str(row.get('province_name', '')).strip()
+            
+            addr_parts = [p for p in [street, district, province] if p and p.lower() != 'nan' and p != 'Không xác định']
+            address = ", ".join(addr_parts) if addr_parts else "Không xác định"
+            
+            # 4. Đóng gói thành chuỗi văn bản giàu ngữ nghĩa cho AI
+            content = (
+                f"Hình thức: {is_sell_str} {type_str}. "
+                f"Tiêu đề: {row.get('title', 'Không xác định')}. "
+                f"Vị trí: {address}. "
+                f"Diện tích: {row.get('area', 0)} m2. "
+                f"Mức giá: {row.get('price', 0)} VNĐ. "
+                f"Mô tả chi tiết: {row.get('description', 'Không có mô tả')}"
+            )
+            
+            # Giới hạn 2000 ký tự để không bị tràn Token của mô hình Embedding
+            return content[:2000]
+
         df['raw_content'] = df.apply(build_raw_content, axis=1)
 
         def build_extracted_json(row):
@@ -144,6 +191,23 @@ def clean_house(raw_path):
             return json.dumps({k: v for k, v in detail_dict.items() if pd.notna(v)}, ensure_ascii=False)
         
         df['extracted_json'] = df.apply(build_extracted_json, axis=1)
+        def detect_is_sell(row):
+            text = str(row.get('title', '')) + " " + str(row.get('description', ''))
+            text_lower = text.lower()
+            
+            # Rule 1: Từ khóa rành rành là cho thuê
+            if 'cho thuê' in text_lower or 'phòng trọ' in text_lower or 'ccmn' in text_lower:
+                return False
+                
+            # Rule 2: Dựa vào giá (Dưới 200 triệu thường 99% là Cho thuê/tháng)
+            if float(row['price']) > 0 and float(row['price']) < 200000000:
+                return False
+                
+            # Mặc định là Bán
+            return True
+
+        df['is_sell'] = df.apply(detect_is_sell, axis=1)
+
         df['confidence_score'] = 0.95
         df['status'] = 'SUCCESS'
 
@@ -152,11 +216,12 @@ def clean_house(raw_path):
         elif 'embedding' not in df.columns:
             df['embedding'] = None
 
+        # 🚨 KHAI TỬ ward_code
         target_columns = [
             'source_url', 'raw_content', 'extracted_json', 'confidence_score',
-            'province_code', 'district_code', 'ward_code', 
+            'province_code', 'district_code', 
             'property_type', 'price', 'area', 'price_per_m2',
-            'status', 'embedding'
+            'status', 'embedding', 'is_sell'
         ]
         
         out_df = df[[c for c in target_columns if c in df.columns]]

@@ -1,4 +1,3 @@
-# load_data/copy_into_postgres3.py
 import os
 import csv
 import time
@@ -12,9 +11,6 @@ from huggingface_hub import InferenceClient
 load_dotenv()
 
 def get_embeddings_batch(texts):
-    """
-    Dùng API của Hugging Face theo đúng quy hoạch kiến trúc.
-    """
     if not texts:
         return []
 
@@ -45,16 +41,16 @@ def load_to_supabase(csv_path, table="ai_extraction_logs"):
 
     print(f"🚀 Bắt đầu xử lý nạp {len(rows)} bản ghi vào bảng {table} bằng API...")
     
-    # GIẢM BATCH XUỐNG 20 ĐỂ API HUGGING FACE KHÔNG BỊ TREO
     BATCH_SIZE = 20 
     conn = psycopg2.connect(db_url)
     cursor = conn.cursor()
 
+    # 🚨 ĐÃ ĐƯA is_sell XUỐNG CUỐI CÙNG
     insert_query = f"""
         INSERT INTO {table} (
             source_url, raw_content, extracted_json, confidence_score,
-            province_code, district_code, ward_code, property_type,
-            price, area, price_per_m2, status, embedding
+            province_code, district_code, property_type,
+            price, area, price_per_m2, status, embedding, is_sell
         ) VALUES %s
         ON CONFLICT (source_url) DO UPDATE SET
             raw_content = EXCLUDED.raw_content,
@@ -62,13 +58,13 @@ def load_to_supabase(csv_path, table="ai_extraction_logs"):
             confidence_score = EXCLUDED.confidence_score,
             province_code = EXCLUDED.province_code,
             district_code = EXCLUDED.district_code,
-            ward_code = EXCLUDED.ward_code,
             property_type = EXCLUDED.property_type,
             price = EXCLUDED.price,
             area = EXCLUDED.area,
             price_per_m2 = EXCLUDED.price_per_m2,
             status = EXCLUDED.status,
             embedding = EXCLUDED.embedding,
+            is_sell = EXCLUDED.is_sell,
             crawled_at = now();
     """
 
@@ -76,9 +72,10 @@ def load_to_supabase(csv_path, table="ai_extraction_logs"):
 
     for i in range(0, len(rows), BATCH_SIZE):
         batch = rows[i:i + BATCH_SIZE]
+        
+        # 🚨 CHÍNH LÀ TRƯỜNG NÀY ĐƯỢC MANG ĐI EMBEDDING
         texts = [r.get("raw_content", "") for r in batch]
         
-        # Bắn lên API (mỗi lần 20 record sẽ rất nhanh)
         embeddings = get_embeddings_batch(texts)
         
         values = []
@@ -88,25 +85,26 @@ def load_to_supabase(csv_path, table="ai_extraction_logs"):
                 
             vector_str = json.dumps(emb)
             
-            # HELPER ÉP KIỂU
+            # Định nghĩa các hàm ép kiểu
             def to_float(val): return float(val) if val else None
-            # ĐÂY LÀ CHÌA KHÓA: Chuyển chuỗi rỗng "" thành None (NULL trong SQL) để không lỗi Khóa ngoại
             def to_str(val): return val.strip() if val and val.strip() else None
+            def to_bool(val): return True if str(val).lower() == 'true' else False
 
+            # 🚨 THỨ TỰ ĐÃ CHUẨN 100% VỚI CÂU QUERY (is_sell Ở CUỐI)
             values.append((
                 to_str(r.get("source_url")),
                 to_str(r.get("raw_content")),
                 to_str(r.get("extracted_json")),
                 to_float(r.get("confidence_score")),
                 to_str(r.get("province_code")),
-                to_str(r.get("district_code")),
-                to_str(r.get("ward_code")),      # Sẽ là NULL nếu thiếu, không bị dính "()"" nữa!
+                to_str(r.get("district_code")), 
                 to_str(r.get("property_type")),
                 to_float(r.get("price")),
                 to_float(r.get("area")),
                 to_float(r.get("price_per_m2")),
                 to_str(r.get("status")),
-                vector_str
+                vector_str,                       # embedding
+                to_bool(r.get("is_sell"))         # is_sell
             ))
         
         if values:
@@ -119,7 +117,6 @@ def load_to_supabase(csv_path, table="ai_extraction_logs"):
                 conn.rollback()
                 print(f"❌ Lỗi SQL tại Batch {i//BATCH_SIZE + 1}: {e}")
         
-        # Delay nhẹ cho API thở
         time.sleep(1)
 
     cursor.close()

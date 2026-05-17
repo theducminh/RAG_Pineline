@@ -31,14 +31,16 @@ def extract_chotot(limit_rows):
             
             get_v = lambda label: next((p.get("value") for p in params if p.get("label") == label), None)
 
+            # 🚨 MẸO ETL: Cứ lấy đủ 3 cấp (Region, Area, Ward) từ nguồn ngoài. 
+            # Việc ép về 2 cấp sẽ do tầng Transform đảm nhiệm để không làm mất Text Context cho AI.
             row = {
                 "id": str(detail.get("list_id")),
                 "title": detail.get("subject"),
                 "description": detail.get("body"),
                 "property_type_name": detail.get("property_type_name"),
                 "province_name": detail.get("region_name"),
-                "district_name": detail.get("area_name"),
-                "ward_name": detail.get("ward_name"),
+                "district_name": detail.get("area_name"), # Sẽ được Transform nhét vào raw_content
+                "ward_name": detail.get("ward_name"),     # Sẽ được Transform dùng làm khóa ngoại
                 "street_name": detail.get("street_name"),
                 "project_name": detail.get("project_name"),
                 "price": detail.get("price"),
@@ -79,10 +81,10 @@ def extract_huggingface(limit_rows):
     
     rows = []
     for item in ds.take(limit_rows):
-        # Tạo chuỗi nhận diện duy nhất
-        core_string = f"{item.get('name')}_{item.get('price')}_{item.get('area')}_{item.get('district_name')}"
-        # Băm thành ID cố định
+        # 🚨 ĐÃ TỐI ƯU HASH ID: Đưa thêm ward_name vào để thuật toán băm tạo ID chuẩn xác nhất theo cấp Xã/Phường
+        core_string = f"{item.get('name')}_{item.get('price')}_{item.get('area')}_{item.get('district_name')}_{item.get('ward_name')}"
         stable_id = f"hf_{hashlib.md5(core_string.encode('utf-8')).hexdigest()[:15]}"
+        
         rows.append({
             "id": stable_id,
             "title": item.get("name"),
@@ -95,13 +97,13 @@ def extract_huggingface(limit_rows):
             "project_name": item.get("project_name"),
             "price": item.get("price"),
             "area": item.get("area"),
-            "lat": None, # Tác giả đã xóa khỏi repo
-            "lng": None, # Tác giả đã xóa khỏi repo
+            "lat": None, 
+            "lng": None, 
             "bedroom_count": item.get("bedroom_count"),
             "bathroom_count": item.get("bathroom_count"),
             "floor_count": item.get("floor_count"),
             "house_direction": item.get("house_direction"),
-            "legal_status": "Không xác định", # Tác giả đã xóa cột legal_paper
+            "legal_status": "Không xác định", 
             "road_width": item.get("road_width"),
             "frontage_width": item.get("frontage"),
             "house_depth": item.get("depth"),
