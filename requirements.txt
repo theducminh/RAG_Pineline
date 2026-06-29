@@ -7,9 +7,9 @@ beautifulsoup4
 supabase
 python-dotenv
 psycopg2-binary
-seaborn
 matplotlib
 plotly
 datasets
 huggingface_hub
 seaborn
+apache-airflow
