@@ -12,5 +12,5 @@ plotly
 datasets
 huggingface_hub
 seaborn
-apache-airflow
+apache-airflow==2.9.1
 asyncpg
