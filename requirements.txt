@@ -12,4 +12,4 @@ plotly
 datasets
 huggingface_hub
 seaborn
-apache-airflow==2.9.1
+
