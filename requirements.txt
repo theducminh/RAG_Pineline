@@ -13,3 +13,4 @@ datasets
 huggingface_hub
 seaborn
 apache-airflow
+asyncpg
