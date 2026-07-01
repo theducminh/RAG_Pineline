@@ -20,10 +20,20 @@ if PROJECT_ROOT not in sys.path:
 # =========================================
 
 def _extract_task(ti, **kwargs):
-    """Bước 1: Crawl dữ liệu và trả về path CSV thô."""
+    """Bước 1: Crawl dữ liệu và trả về path CSV thô.
+    [THAY ĐỔI] limit có thể truyền khi Trigger DAG:
+      - Hằng ngày: dùng mặc định 200.
+      - Backfill 1 lần: Trigger DAG w/ config  ->  {"limit": 3000}
+    """
     from extract_data.extract_house import extract_house
 
-    raw_path = extract_house(limit_rows=kwargs.get('limit', 200))
+    dag_run = kwargs.get('dag_run')
+    conf = (dag_run.conf or {}) if dag_run else {}
+    # [THAY ĐỔI] Thứ tự ưu tiên: config khi trigger > biến môi trường ETL_LIMIT (set trong start_airflow.sh) > mặc định 200
+    limit = int(conf.get('limit') or os.getenv('ETL_LIMIT') or kwargs.get('limit', 200))
+    print(f"📥 Extract với limit={limit}")
+
+    raw_path = extract_house(limit_rows=limit)
     if not raw_path:
         raise ValueError("Extract failed: No CSV path returned")
     return raw_path
