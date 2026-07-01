@@ -55,6 +55,31 @@ DIST_CSV = os.path.join(PROJECT_ROOT, 'data_input/master_data/districts.csv')
 PROV_DICT, DIST_DICT = load_location_dicts(PROV_CSV, DIST_CSV)
 print(f"📊 Đã tải Master Data 2 Cấp: {len(PROV_DICT)} Tỉnh, {len(DIST_DICT)} Xã/Phường.")
 
+# =========================================================
+# [THÊM MỚI] LỌC OUTLIER GIÁ (chống tin "giá ảo" làm lệch benchmark định giá)
+#  - Bỏ price_per_m2 <= 0.
+#  - Trong từng nhóm (is_sell, property_type): cắt 1% trên/dưới của price_per_m2.
+#  - Nhóm < 20 mẫu: giữ nguyên để tránh cắt nhầm khi dữ liệu còn ít.
+# =========================================================
+def filter_price_outliers(df):
+    if 'price_per_m2' not in df.columns or df.empty:
+        return df
+
+    before = len(df)
+    df = df[df['price_per_m2'] > 0]
+
+    def clip_group(g):
+        if len(g) < 20:
+            return g
+        lo = g['price_per_m2'].quantile(0.01)
+        hi = g['price_per_m2'].quantile(0.99)
+        return g[(g['price_per_m2'] >= lo) & (g['price_per_m2'] <= hi)]
+
+    df = df.groupby(['is_sell', 'property_type'], group_keys=False).apply(clip_group)
+    print(f"🧹 Lọc outlier giá: {before} -> {len(df)} dòng (giữ lại {len(df)}).")
+    return df
+
+
 def clean_house(raw_path):
     if not raw_path or not os.path.exists(raw_path):
         print(f"❌ Đường dẫn raw_path không tồn tại: {raw_path}")
@@ -208,6 +233,12 @@ def clean_house(raw_path):
 
         df['is_sell'] = df.apply(detect_is_sell, axis=1)
 
+        # [THÊM MỚI] Lọc tin giá ảo sau khi đã có is_sell + property_type + price_per_m2
+        df = filter_price_outliers(df)
+        if df.empty:
+            print("❌ Sau khi lọc outlier không còn dòng nào hợp lệ!")
+            return None
+
         df['confidence_score'] = 0.95
         df['status'] = 'SUCCESS'
 
@@ -226,7 +257,9 @@ def clean_house(raw_path):
         
         out_df = df[[c for c in target_columns if c in df.columns]]
         clean_path = raw_path.replace("raw_", "clean_")
-        out_df.to_csv(clean_path, index=False, quoting=csv.QUOTE_ALL, escapechar='\\')
+        # [SỬA LỖI] Bỏ escapechar='\\' -> dùng cơ chế nhân đôi dấu nháy mặc định (doublequote)
+        # để stdlib csv.DictReader bên load đọc lại ĐÚNG cột (trước đây lệch cột -> source_url rỗng -> UPSERT 0).
+        out_df.to_csv(clean_path, index=False, quoting=csv.QUOTE_ALL)
         print(f"🎯 File Cleaned sẵn sàng: {clean_path}")
         return clean_path
 
