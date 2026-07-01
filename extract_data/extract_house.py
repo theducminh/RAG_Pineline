@@ -6,6 +6,8 @@ def extract_chotot(limit_rows):
     print(f"🔄 Đang cào {limit_rows} tin từ Chợ Tốt...")
     ids = []
     page = 0
+    # [THAY ĐỔI] Số trang co giãn theo limit (mỗi trang 20 tin) thay vì chặn cứng 10 trang (~200 tin)
+    max_pages = (limit_rows // 20) + 5
     # Cần logic retry/backoff ở production, nhưng hiện tại giữ cấu trúc cũ
     while len(ids) < limit_rows:
         url_list = f"https://gateway.chotot.com/v1/public/ad-listing?region_v2=12000&cg=1000&o={page*20}&limit=20"
@@ -19,7 +21,7 @@ def extract_chotot(limit_rows):
             print(f"Lỗi lấy danh sách Chợ Tốt: {e}")
             break
         page += 1
-        if page > 10: break
+        if page > max_pages: break   # [THAY ĐỔI] trần an toàn co giãn, tránh lặp vô hạn
 
     rows = []
     for ad_id in ids[:limit_rows]:
@@ -117,12 +119,15 @@ def extract_house(limit_rows=100):
     download_dir = f"data_input/house/{today}"
     os.makedirs(download_dir, exist_ok=True)
     
-    # Chia đều số lượng cho 2 nguồn
-    limit_per_source = limit_rows // 2
-    
-    rows = []
-    rows.extend(extract_chotot(limit_per_source))
-    rows.extend(extract_huggingface(limit_per_source))
+    # [THAY ĐỔI] Lấy 1 nửa từ Chợ Tốt; phần THIẾU (do Chợ Tốt giới hạn nguồn) bù bằng HuggingFace
+    # -> tổng số dòng bám sát limit_rows yêu cầu thay vì hụt.
+    target_chotot = limit_rows // 2
+    chotot_rows = extract_chotot(target_chotot)
+    remaining = max(limit_rows - len(chotot_rows), 0)
+    print(f"📊 Chợ Tốt lấy được {len(chotot_rows)} dòng; HuggingFace sẽ bù {remaining} dòng.")
+    hf_rows = extract_huggingface(remaining)
+
+    rows = chotot_rows + hf_rows
 
     if not rows:
         raise RuntimeError("❌ CRITICAL: Không cào được bất kỳ dữ liệu nào từ Chợ Tốt và Hugging Face!")
